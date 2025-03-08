@@ -1,0 +1,88 @@
+==========================================================================================================================================================================================================================================================
+== Test 2: copy_file With Text File
+== Attempts to copy a text file with the 'copy_file' program
+Running test...
+Expected output is in file 'test_results/raw/lab_02-2-expected.tmp'
+Actual output is in file 'test_results/raw/lab_02-2-actual.tmp'
+Test FAILED
+== Side-by-Side Comparison ==
+== Differing lines have a character like '|' '>' or '<' in the middle
+==== EXPECT ====                                                  ==== ACTUAL ====
+$ rm -rf numbers_copy.txt                                         $ rm -rf numbers_copy.txt
+$ ./copy_file test_cases/resources/numbers.txt numbers_copy.txt   $ ./copy_file test_cases/resources/numbers.txt numbers_copy.txt
+$ diff test_cases/resources/numbers.txt numbers_copy.txt          $ diff test_cases/resources/numbers.txt numbers_copy.txt
+                                                                > 1,35d0
+                                                                > < 2308
+                                                                > < 2500
+                                                                > < 652
+                                                                > < 2630
+                                                                > < 2487
+                                                                > < 2388
+                                                                > < 3230
+                                                                > < 159
+                                                                > < 3802
+                                                                > < 1523
+                                                                > < 2209
+                                                                > < 768
+                                                                > < 120
+                                                                > < 3432
+                                                                > < 2868
+                                                                > < 404
+                                                                > < 2866
+                                                                > < 383
+                                                                > < 3306
+                                                                > < 3356
+                                                                > < 2990
+                                                                > < 2340
+                                                                > < 1993
+                                                                > < 2698
+                                                                > < 2345
+                                                                > < 2181
+                                                                > < 2985
+                                                                > < 3155
+                                                                > < 155
+                                                                > < 219
+                                                                > < 1948
+                                                                > < 3149
+                                                                > < 363
+                                                                > < 1599
+                                                                > < 174
+$ exit                                                            $ exit
+exit                                                              exit
+== Line Differences ==
+ACTUAL  4) 1,35d0
+ACTUAL  5) < 2308
+ACTUAL  6) < 2500
+ACTUAL  7) < 652
+ACTUAL  8) < 2630
+ACTUAL  9) < 2487
+ACTUAL 10) < 2388
+ACTUAL 11) < 3230
+ACTUAL 12) < 159
+ACTUAL 13) < 3802
+ACTUAL 14) < 1523
+ACTUAL 15) < 2209
+ACTUAL 16) < 768
+ACTUAL 17) < 120
+ACTUAL 18) < 3432
+ACTUAL 19) < 2868
+ACTUAL 20) < 404
+ACTUAL 21) < 2866
+ACTUAL 22) < 383
+ACTUAL 23) < 3306
+ACTUAL 24) < 3356
+ACTUAL 25) < 2990
+ACTUAL 26) < 2340
+ACTUAL 27) < 1993
+ACTUAL 28) < 2698
+ACTUAL 29) < 2345
+ACTUAL 30) < 2181
+ACTUAL 31) < 2985
+ACTUAL 32) < 3155
+ACTUAL 33) < 155
+ACTUAL 34) < 219
+ACTUAL 35) < 1948
+ACTUAL 36) < 3149
+ACTUAL 37) < 363
+ACTUAL 38) < 1599
+ACTUAL 39) < 174

@@ -1,0 +1,36 @@
+==========================================================================================================================================================================================================================================================
+== Test 4: read_last_ints 1
+== Attempts to read the last 11 ints from the file 'numbers.bin'
+Running test...
+Expected output is in file 'test_results/raw/lab_02-4-expected.tmp'
+Actual output is in file 'test_results/raw/lab_02-4-actual.tmp'
+Test FAILED
+== Side-by-Side Comparison ==
+== Differing lines have a character like '|' '>' or '<' in the middle
+==== EXPECT ====                                         ==== ACTUAL ====
+$ ./read_last_ints test_cases/resources/numbers.bin 11   $ ./read_last_ints test_cases/resources/numbers.bin 11
+3647                                                   <
+2433                                                   <
+1624                                                   <
+1266                                                   <
+505                                                    <
+571                                                    <
+1648                                                   <
+255                                                    <
+900                                                    <
+1801                                                   <
+1694                                                   <
+$ exit                                                   $ exit
+exit                                                     exit
+== Line Differences ==
+EXPECT  2) 3647
+EXPECT  3) 2433
+EXPECT  4) 1624
+EXPECT  5) 1266
+EXPECT  6) 505
+EXPECT  7) 571
+EXPECT  8) 1648
+EXPECT  9) 255
+EXPECT 10) 900
+EXPECT 11) 1801
+EXPECT 12) 1694
