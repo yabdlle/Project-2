@@ -30,135 +30,61 @@ int tokenize(char *s, strvec_t *tokens) {
     }
     char *tok = strtok(s, " ");    // Split string s into spaces
     while (tok != NULL) {
-        strvec_add(tokens, tok);    // Add token to the tokens vector
+        if (strvec_add(tokens, tok) != 0) {    // Add token
+            perror("Failed to add token");
+            return -1;
+        }
         tok = strtok(NULL, " ");    // Get the next token
     }
 
     return 0;
 }
 
-#define _GNU_SOURCE
-
-#include <assert.h>
-#include <fcntl.h>
-#include <signal.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <sys/wait.h>
-#include <unistd.h>
-
-#include "job_list.h"
-#include "string_vector.h"
-#include "swish_funcs.h"
-
-#define MAX_ARGS 10
-
 int run_command(strvec_t *tokens) {
-    // Error checking for invalid input
+    // Error checking: make sure tokens is valid and not empty
     if (tokens == NULL || tokens->length == 0) {
+        perror("Invalid tokens");
         return -1;
     }
 
-    // Create an array of arguments from the tokens (excluding redirection operators)
-    char *args[MAX_ARGS + 1];    // Array for execvp arguments (one extra for NULL)
-    int arg_count = 0;
-    int input_redirect = -1, output_redirect = -1, append_redirect = -1;
+    // Build the arguments array for execvp()
+    char *args[tokens->length + 1];    // +1 for the NULL terminator required by execvp
+    for (int i = 0; i < tokens->length; i++) {
+        args[i] = strvec_get(tokens, i);    // Copy tokens into the args array
+    }
+    args[tokens->length] = NULL;    // NULL terminate the argument array
 
-    // Process tokens to separate arguments and handle redirection operators
-    for (int i = 0; i < tokens->length && arg_count < MAX_ARGS; i++) {
-        if (strcmp(strvec_get(tokens, i), "<") == 0) {
-            // Input redirection operator found
-            input_redirect = i + 1;
-        } else if (strcmp(strvec_get(tokens, i), ">") == 0) {
-            // Output redirection operator found
-            output_redirect = i + 1;
-        } else if (strcmp(strvec_get(tokens, i), ">>") == 0) {
-            // Append output redirection operator found
-            append_redirect = i + 1;
+    // Fork the process to run the command in the child process
+    pid_t pid = fork();
+    if (pid == -1) {
+        perror("fork failed");
+        return -1;
+    }
+
+    if (pid == 0) {
+        // Child process
+        if (execvp(args[0], args) == -1) {
+            perror("execvp failed");
+            exit(EXIT_FAILURE);    // Exit child process if execvp fails
+        }
+    } else {
+        // Parent process
+        // Wait for the child process to finish
+        int status;
+        if (waitpid(pid, &status, 0) == -1) {
+            perror("waitpid failed");
+            return -1;
+        }
+
+        // You can handle the exit status here if needed
+        if (WIFEXITED(status)) {
+            printf("Child exited with status %d\n", WEXITSTATUS(status));
         } else {
-            // Add the token to the arguments array
-            args[arg_count++] = strvec_get(tokens, i);
+            printf("Child process terminated abnormally\n");
         }
     }
 
-    // Set the last argument to NULL for execvp()
-    args[arg_count] = NULL;
-
-    // Handle input redirection (if applicable)
-    if (input_redirect != -1) {
-        int input_fd = open(strvec_get(tokens, input_redirect), O_RDONLY);
-        if (input_fd == -1) {
-            perror("Input redirection failed");
-            return -1;
-        }
-        if (dup2(input_fd, STDIN_FILENO) == -1) {
-            perror("dup2 for input redirection failed");
-            close(input_fd);
-            return -1;
-        }
-        close(input_fd);    // We can close the original file descriptor after redirecting
-    }
-
-    // Handle output redirection (if applicable)
-    if (output_redirect != -1) {
-        int output_fd =
-            open(strvec_get(tokens, output_redirect), O_WRONLY | O_CREAT | O_TRUNC, 0644);
-        if (output_fd == -1) {
-            perror("Output redirection failed");
-            return -1;
-        }
-        if (dup2(output_fd, STDOUT_FILENO) == -1) {
-            perror("dup2 for output redirection failed");
-            close(output_fd);
-            return -1;
-        }
-        close(output_fd);
-    }
-
-    // Handle append redirection (if applicable)
-    if (append_redirect != -1) {
-        int append_fd =
-            open(strvec_get(tokens, append_redirect), O_WRONLY | O_CREAT | O_APPEND, 0644);
-        if (append_fd == -1) {
-            perror("Append redirection failed");
-            return -1;
-        }
-        if (dup2(append_fd, STDOUT_FILENO) == -1) {
-            perror("dup2 for append redirection failed");
-            close(append_fd);
-            return -1;
-        }
-        close(append_fd);
-    }
-
-    // Setup the signal handlers to their default (SIG_DFL) values
-    struct sigaction sa;
-    sa.sa_handler = SIG_DFL;    // Use the default action
-    sa.sa_flags = 0;
-    sigemptyset(&sa.sa_mask);
-
-    // Restore signal handlers for SIGTTOU and SIGTTIN
-    if (sigaction(SIGTTOU, &sa, NULL) == -1 || sigaction(SIGTTIN, &sa, NULL) == -1) {
-        perror("sigaction failed");
-        return -1;
-    }
-
-    // Set the process group of the child process to its own process group
-    if (setpgid(0, 0) == -1) {
-        perror("Failed to set process group");
-        return -1;
-    }
-
-    // Execute the command
-    if (execvp(args[0], args) == -1) {
-        perror("execvp failed");
-        return -1;
-    }
-
-    return 0;    // This point is never reached if execvp is successful
+    return 0;    // Success
 }
 
 int resume_job(strvec_t *tokens, job_list_t *jobs, int is_foreground) {
