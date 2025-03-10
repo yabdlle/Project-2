@@ -24,34 +24,141 @@ int tokenize(char *s, strvec_t *tokens) {
     // Use the strtok() function to accomplish this
     // Add each token to the 'tokens' parameter (a string vector)
     // Return 0 on success, -1 on error
+
+    if (s == NULL || tokens == NULL) {
+        return -1;
+    }
+    char *tok = strtok(s, " ");    // Split string s into spaces
+    while (tok != NULL) {
+        strvec_add(tokens, tok);    // Add token to the tokens vector
+        tok = strtok(NULL, " ");    // Get the next token
+    }
+
     return 0;
 }
 
+#define _GNU_SOURCE
+
+#include <assert.h>
+#include <fcntl.h>
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+#include "job_list.h"
+#include "string_vector.h"
+#include "swish_funcs.h"
+
+#define MAX_ARGS 10
+
 int run_command(strvec_t *tokens) {
-    // TODO Task 2: Execute the specified program (token 0) with the
-    // specified command-line arguments
-    // THIS FUNCTION SHOULD BE CALLED FROM A CHILD OF THE MAIN SHELL PROCESS
-    // Hint: Build a string array from the 'tokens' vector and pass this into execvp()
-    // Another Hint: You have a guarantee of the longest possible needed array, so you
-    // won't have to use malloc.
+    // Error checking for invalid input
+    if (tokens == NULL || tokens->length == 0) {
+        return -1;
+    }
 
-    // TODO Task 3: Extend this function to perform output redirection before exec()'ing
-    // Check for '<' (redirect input), '>' (redirect output), '>>' (redirect and append output)
-    // entries inside of 'tokens' (the strvec_find() function will do this for you)
-    // Open the necessary file for reading (<), writing (>), or appending (>>)
-    // Use dup2() to redirect stdin (<), stdout (> or >>)
-    // DO NOT pass redirection operators and file names to exec()'d program
-    // E.g., "ls -l > out.txt" should be exec()'d with strings "ls", "-l", NULL
+    // Create an array of arguments from the tokens (excluding redirection operators)
+    char *args[MAX_ARGS + 1];    // Array for execvp arguments (one extra for NULL)
+    int arg_count = 0;
+    int input_redirect = -1, output_redirect = -1, append_redirect = -1;
 
-    // TODO Task 4: You need to do two items of setup before exec()'ing
-    // 1. Restore the signal handlers for SIGTTOU and SIGTTIN to their defaults.
-    // The code in main() within swish.c sets these handlers to the SIG_IGN value.
-    // Adapt this code to use sigaction() to set the handlers to the SIG_DFL value.
-    // 2. Change the process group of this process (a child of the main shell).
-    // Call getpid() to get its process ID then call setpgid() and use this process
-    // ID as the value for the new process group ID
+    // Process tokens to separate arguments and handle redirection operators
+    for (int i = 0; i < tokens->length && arg_count < MAX_ARGS; i++) {
+        if (strcmp(strvec_get(tokens, i), "<") == 0) {
+            // Input redirection operator found
+            input_redirect = i + 1;
+        } else if (strcmp(strvec_get(tokens, i), ">") == 0) {
+            // Output redirection operator found
+            output_redirect = i + 1;
+        } else if (strcmp(strvec_get(tokens, i), ">>") == 0) {
+            // Append output redirection operator found
+            append_redirect = i + 1;
+        } else {
+            // Add the token to the arguments array
+            args[arg_count++] = strvec_get(tokens, i);
+        }
+    }
 
-    return 0;
+    // Set the last argument to NULL for execvp()
+    args[arg_count] = NULL;
+
+    // Handle input redirection (if applicable)
+    if (input_redirect != -1) {
+        int input_fd = open(strvec_get(tokens, input_redirect), O_RDONLY);
+        if (input_fd == -1) {
+            perror("Input redirection failed");
+            return -1;
+        }
+        if (dup2(input_fd, STDIN_FILENO) == -1) {
+            perror("dup2 for input redirection failed");
+            close(input_fd);
+            return -1;
+        }
+        close(input_fd);    // We can close the original file descriptor after redirecting
+    }
+
+    // Handle output redirection (if applicable)
+    if (output_redirect != -1) {
+        int output_fd =
+            open(strvec_get(tokens, output_redirect), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        if (output_fd == -1) {
+            perror("Output redirection failed");
+            return -1;
+        }
+        if (dup2(output_fd, STDOUT_FILENO) == -1) {
+            perror("dup2 for output redirection failed");
+            close(output_fd);
+            return -1;
+        }
+        close(output_fd);
+    }
+
+    // Handle append redirection (if applicable)
+    if (append_redirect != -1) {
+        int append_fd =
+            open(strvec_get(tokens, append_redirect), O_WRONLY | O_CREAT | O_APPEND, 0644);
+        if (append_fd == -1) {
+            perror("Append redirection failed");
+            return -1;
+        }
+        if (dup2(append_fd, STDOUT_FILENO) == -1) {
+            perror("dup2 for append redirection failed");
+            close(append_fd);
+            return -1;
+        }
+        close(append_fd);
+    }
+
+    // Setup the signal handlers to their default (SIG_DFL) values
+    struct sigaction sa;
+    sa.sa_handler = SIG_DFL;    // Use the default action
+    sa.sa_flags = 0;
+    sigemptyset(&sa.sa_mask);
+
+    // Restore signal handlers for SIGTTOU and SIGTTIN
+    if (sigaction(SIGTTOU, &sa, NULL) == -1 || sigaction(SIGTTIN, &sa, NULL) == -1) {
+        perror("sigaction failed");
+        return -1;
+    }
+
+    // Set the process group of the child process to its own process group
+    if (setpgid(0, 0) == -1) {
+        perror("Failed to set process group");
+        return -1;
+    }
+
+    // Execute the command
+    if (execvp(args[0], args) == -1) {
+        perror("execvp failed");
+        return -1;
+    }
+
+    return 0;    // This point is never reached if execvp is successful
 }
 
 int resume_job(strvec_t *tokens, job_list_t *jobs, int is_foreground) {
