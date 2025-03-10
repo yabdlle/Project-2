@@ -41,50 +41,30 @@ int tokenize(char *s, strvec_t *tokens) {
 }
 
 int run_command(strvec_t *tokens) {
-    // Error checking: make sure tokens is valid and not empty
-    if (tokens == NULL || tokens->length == 0) {
-        perror("Invalid tokens");
-        return -1;
-    }
+    // TODO Task 2: Execute the specified program (token 0) with the
+    // specified command-line arguments
+    // THIS FUNCTION SHOULD BE CALLED FROM A CHILD OF THE MAIN SHELL PROCESS
+    // Hint: Build a string array from the 'tokens' vector and pass this into execvp()
+    // Another Hint: You have a guarantee of the longest possible needed array, so you
+    // won't have to use malloc.
 
-    // Build the arguments array for execvp()
-    char *args[tokens->length + 1];    // +1 for the NULL terminator required by execvp
-    for (int i = 0; i < tokens->length; i++) {
-        args[i] = strvec_get(tokens, i);    // Copy tokens into the args array
-    }
-    args[tokens->length] = NULL;    // NULL terminate the argument array
+    // TODO Task 3: Extend this function to perform output redirection before exec()'ing
+    // Check for '<' (redirect input), '>' (redirect output), '>>' (redirect and append output)
+    // entries inside of 'tokens' (the strvec_find() function will do this for you)
+    // Open the necessary file for reading (<), writing (>), or appending (>>)
+    // Use dup2() to redirect stdin (<), stdout (> or >>)
+    // DO NOT pass redirection operators and file names to exec()'d program
+    // E.g., "ls -l > out.txt" should be exec()'d with strings "ls", "-l", NULL
 
-    // Fork the process to run the command in the child process
-    pid_t pid = fork();
-    if (pid == -1) {
-        perror("fork failed");
-        return -1;
-    }
+    // TODO Task 4: You need to do two items of setup before exec()'ing
+    // 1. Restore the signal handlers for SIGTTOU and SIGTTIN to their defaults.
+    // The code in main() within swish.c sets these handlers to the SIG_IGN value.
+    // Adapt this code to use sigaction() to set the handlers to the SIG_DFL value.
+    // 2. Change the process group of this process (a child of the main shell).
+    // Call getpid() to get its process ID then call setpgid() and use this process
+    // ID as the value for the new process group ID
 
-    if (pid == 0) {
-        // Child process
-        if (execvp(args[0], args) == -1) {
-            perror("execvp failed");
-            exit(EXIT_FAILURE);    // Exit child process if execvp fails
-        }
-    } else {
-        // Parent process
-        // Wait for the child process to finish
-        int status;
-        if (waitpid(pid, &status, 0) == -1) {
-            perror("waitpid failed");
-            return -1;
-        }
-
-        // You can handle the exit status here if needed
-        if (WIFEXITED(status)) {
-            printf("Child exited with status %d\n", WEXITSTATUS(status));
-        } else {
-            printf("Child process terminated abnormally\n");
-        }
-    }
-
-    return 0;    // Success
+    return 0;
 }
 
 int resume_job(strvec_t *tokens, job_list_t *jobs, int is_foreground) {
