@@ -41,30 +41,83 @@ int tokenize(char *s, strvec_t *tokens) {
 }
 
 int run_command(strvec_t *tokens) {
-    // TODO Task 2: Execute the specified program (token 0) with the
-    // specified command-line arguments
-    // THIS FUNCTION SHOULD BE CALLED FROM A CHILD OF THE MAIN SHELL PROCESS
-    // Hint: Build a string array from the 'tokens' vector and pass this into execvp()
-    // Another Hint: You have a guarantee of the longest possible needed array, so you
-    // won't have to use malloc.
+    if (tokens == NULL || tokens->length == 0) {
+        fprintf(stderr, "run_command: No command provided\n");
+        return -1;
+    }
 
-    // TODO Task 3: Extend this function to perform output redirection before exec()'ing
-    // Check for '<' (redirect input), '>' (redirect output), '>>' (redirect and append output)
-    // entries inside of 'tokens' (the strvec_find() function will do this for you)
-    // Open the necessary file for reading (<), writing (>), or appending (>>)
-    // Use dup2() to redirect stdin (<), stdout (> or >>)
-    // DO NOT pass redirection operators and file names to exec()'d program
-    // E.g., "ls -l > out.txt" should be exec()'d with strings "ls", "-l", NULL
+    char *argv[MAX_ARGS];
+    int i, in_fd = -1, out_fd = -1;
+    int argc = 0;
 
-    // TODO Task 4: You need to do two items of setup before exec()'ing
-    // 1. Restore the signal handlers for SIGTTOU and SIGTTIN to their defaults.
-    // The code in main() within swish.c sets these handlers to the SIG_IGN value.
-    // Adapt this code to use sigaction() to set the handlers to the SIG_DFL value.
-    // 2. Change the process group of this process (a child of the main shell).
-    // Call getpid() to get its process ID then call setpgid() and use this process
-    // ID as the value for the new process group ID
+    for (i = 0; i < tokens->length && argc < MAX_ARGS - 1; i++) {
+        char *token = strvec_get(tokens, i);
 
-    return 0;
+        if (strcmp(token, "<") == 0) {
+            if (i + 1 < tokens->length) {
+                in_fd = open(strvec_get(tokens, i + 1), O_RDONLY);
+                if (in_fd == -1) {
+                    perror("Failed to open input file");
+                    return -1;
+                }
+                i++;
+            } else {
+                fprintf(stderr, "Missing file");
+                return -1;
+            }
+        } else if (strcmp(token, ">") == 0) {
+            if (i + 1 < tokens->length) {
+                out_fd = open(strvec_get(tokens, i + 1), O_WRONLY | O_CREAT | O_TRUNC,
+                              S_IRUSR | S_IWUSR);
+                if (out_fd == -1) {
+                    perror("Failed to open output file");
+                    return -1;
+                }
+                i++;
+            } else {
+                fprintf(stderr, "Missing file");
+                return -1;
+            }
+        } else if (strcmp(token, ">>") == 0) {
+            if (i + 1 < tokens->length) {
+                out_fd = open(strvec_get(tokens, i + 1),
+                              O_WRONLY | O_CREAT | O_APPEND | S_IRUSR | S_IWUSR);
+                if (out_fd == -1) {
+                    perror("Failed to open output file");
+                    return -1;
+                }
+                i++;
+            } else {
+                fprintf(stderr, "Missing file");
+                return -1;
+            }
+        } else {
+            argv[argc++] = token;
+        }
+    }
+    argv[argc] = NULL;
+
+    if (in_fd != -1) {
+        if (dup2(in_fd, STDIN_FILENO) == -1) {
+            perror("dup2 input redirection failed");
+            close(in_fd);
+            return -1;
+        }
+        close(in_fd);
+    }
+
+    if (out_fd != -1) {
+        if (dup2(out_fd, STDOUT_FILENO) == -1) {
+            perror("dup2 output redirection failed");
+            close(out_fd);
+            return -1;
+        }
+        close(out_fd);
+    }
+
+    execvp(argv[0], argv);
+    perror("exec");
+    exit(EXIT_FAILURE);
 }
 
 int resume_job(strvec_t *tokens, job_list_t *jobs, int is_foreground) {

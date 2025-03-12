@@ -73,22 +73,26 @@ int main(int argc, char **argv) {
             // If the user supplied an argument (token at index 1), change to that directory
             // Otherwise, change to the home directory by default
             // This is available in the HOME environment variable (use getenv())
+            // If the user supplied an argument (token at index 1), change to that directory
+
             if (tokens.length > 1) {
-                // If an argument is provided, change to the directory specified
                 if (chdir(strvec_get(&tokens, 1)) == -1) {
-                    perror("Error");
+                    perror("chdir");
                 }
             } else {
                 // If no argument is provided, change to the home directory
                 const char *home = getenv("HOME");
-                if (home != NULL) {
-                    if (chdir(home) == -1) {
-                        perror("cd failed");
-                    }
-                } else {
-                    fprintf(stderr, "HOME environment variable not set");
+                if (home == NULL) {
+                    fprintf(stderr, "HOME environment variable not set\n");
+                } else if (chdir(home) == -1) {
+                    perror("chdir");
                 }
             }
+        }
+
+        else if (strcmp(first_token, "exit") == 0) {
+            strvec_clear(&tokens);
+            break;
         }
 
         else if (strcmp(first_token, "exit") == 0) {
@@ -174,6 +178,25 @@ int main(int argc, char **argv) {
             //    use waitpid() to interact with the newly spawned child process.
             // 3. Add a new entry to the jobs list with the child's pid, program name,
             //    and status BACKGROUND.
+
+            pid_t pid = fork();
+            if (pid == -1) {
+                perror("fork failed");
+                return 1;
+            }
+
+            // Running command on child process
+            if (pid == 0) {
+                if (run_command(&tokens) == -1) {
+                    exit(EXIT_FAILURE);
+                }
+            } else {
+                int status;
+                if (waitpid(pid, &status, 0) == -1) {
+                    perror("waitpid failed");
+                    return 1;
+                }
+            }
         }
 
         strvec_clear(&tokens);
