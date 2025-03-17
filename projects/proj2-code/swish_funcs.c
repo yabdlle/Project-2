@@ -86,6 +86,78 @@ int resume_job(strvec_t *tokens, job_list_t *jobs, int is_foreground) {
     // 3. Make sure to modify the 'status' field of the relevant job list entry to BACKGROUND
     //    (as it was STOPPED before this)
 
+    //checking if the correct number of tokens is provided
+    if (tokens->length < 2) {
+        fprintf(stderr, "Missing job index.");
+        return -1;
+    }
+
+    //parsing the job index from token 1
+    int job_ind;
+    if (sscanf(tokens->data[1], "%d", &job_ind) != 1) {
+        fprintf(stderr, "Invalid job index\n");
+        return -1;
+    }
+
+    //retrieving job from the job list
+    job_t *job = job_list_get(jobs, job_ind);
+    if (job == NULL) {
+        fprintf(stderr, "Job index out of bounds\n");
+        return -1;
+    }
+
+    //getting process group ID of job
+    pid_t job_pgid = job->pid;
+    //resume job in the foreground
+    if (is_foreground) {
+        //I need to move job's process group to forground
+        if (tcsetpgrp(STDERR_FILENO, job_pgid) == -1) {
+            perror("tcsetpgrp failed.");
+            return -1;
+        }
+
+        //sending the sigcontinue to job's process group
+        if (kill(-job_pgid, SIGCONT) < 0) {
+            perror("kill (SIGCONT)");
+            return -1;
+        }
+
+        //now we wait for job to terminate or stop
+        int status;
+        if (waitpid(job->pid, &status, WUNTRACED) == -1) {
+            perror("waitpid failed.");
+            return -1;
+        }
+
+        //if job has terminated check
+        if (WIFEXITED(status) || WIFSIGNALED(status)) {
+            //remove job from job list if has terminated
+            if (job_list_remove(jobs, job_ind) == -1) {
+                fprintf(stderr, "failed to remove job from list\n");
+                return -1;
+            }
+        }
+
+        //restore shell's process group to foreground
+        if (tcsetpgrp(STDERR_FILENO, getpgrp()) == -1) {
+            perror("tcsetpgrp failed.");
+            return -1;
+        }
+    }
+
+    //resume job in background
+    else {
+        //sending sigcontinue to job's process group
+        if (kill(-job_pgid, SIGCONT) < 0) {
+            perror("kill (SIGCONT) failed.");
+            return -1;
+        }
+
+        //update the job's status to background
+        job->status = BACKGROUND;
+    }
+
+
     return 0;
 }
 

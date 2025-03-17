@@ -14,6 +14,8 @@
 #define CMD_LEN 512
 #define PROMPT "@> "
 
+void handle_sigtstp(int sig) {}
+
 int main(int argc, char **argv) {
     // Task 4: Set up shell to ignore SIGTTIN, SIGTTOU when put in background
     // You should adapt this code for use in run_command().
@@ -174,6 +176,63 @@ int main(int argc, char **argv) {
             //    use waitpid() to interact with the newly spawned child process.
             // 3. Add a new entry to the jobs list with the child's pid, program name,
             //    and status BACKGROUND.
+
+            //Task 2
+            //checking if last token is "&" -background job
+            int is_backg = 0;
+            if (tokens.length > 1 && strcmp(strvec_get(&tokens, tokens.length - 1), "&") == 0) {
+                is_backg = 1;
+                strvec_take(&tokens, tokens.length - 1);
+            }
+
+            pid_t child_pid = fork();
+            if (child_pid == -1) {
+                perror("Fork failed.");
+                return -1;
+            }
+
+            //Task 4
+            if (child_pid == 0) {
+                //child process, so run the command
+                if (run_command(&tokens)) {
+                    perror("run_command failed.");
+                    exit(1);
+                }
+                exit(0);
+            }
+            else {
+                //parent process, so handling job management
+                if (!is_backg) {
+                    //Foreground job is to move the child process to foreground
+                    if (tcsetpgrp(STDIN_FILENO, child_pid) == -1) {
+                        perror("tcsetpgrp");
+                        return -1;
+                    }
+
+                    //wait for the child process to finish or stop
+                    int status;
+                    if (waitpid(child_pid, &status, WUNTRACED) == -1) {
+                        perror("waitpid failed.");
+                        return -1;
+                    }
+
+                    //Restore shell's process group to foreground
+                    if (tcsetpgrp(STDIN_FILENO, getpgrp()) == -1) {
+                        perror("tcsetpgrp failed.");
+                        return -1;
+                    }
+
+                    //if child was stopped, I need to add it to job list
+                    if (WIFSTOPPED(status)) {
+                        job_list_add(&jobs, child_pid, strvec_get(&tokens, 0), STOPPED);
+                    }
+                }
+
+                else {
+                    //Background job is to add it to job list
+                    job_list_add(&jobs, child_pid, strvec_get(&tokens, 0), BACKGROUND);
+                }
+            }
         }
 
         strvec_clear(&tokens);
