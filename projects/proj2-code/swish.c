@@ -185,16 +185,57 @@ int main(int argc, char **argv) {
                 return 1;
             }
 
-            // Running command on child process
+            // Task 4: Child Process Setup
             if (pid == 0) {
+                if (setpgid(0, 0) == -1) {
+                    perror("setpgid failed");
+                    exit(1);
+                }
+
+                struct sigaction sa;
+                sa.sa_handler = SIG_DFL;
+                sigemptyset(&sa.sa_mask);
+                sa.sa_flags = 0;
+                if (sigaction(SIGTTOU, &sa, NULL) == -1 || sigaction(SIGTTIN, &sa, NULL) == -1) {
+                    perror("sigaction failed");
+                    exit(1);
+                }
+
                 if (run_command(&tokens) == -1) {
-                    exit(EXIT_FAILURE);
+                    exit(1);
                 }
             } else {
                 int status;
-                if (waitpid(pid, &status, 0) == -1) {
-                    perror("waitpid failed");
-                    return 1;
+                int is_background = 0;
+
+                // Task 5: Check if the last token is "&" for background process
+                if (tokens.length > 1 && strcmp(strvec_get(&tokens, tokens.length - 1), "&") == 0) {
+                    is_background = 1;
+                    strvec_take(&tokens, tokens.length - 1);    // Remove the "&"
+                }
+
+                // Task 4: Parent process handles foreground job and waits
+                if (!is_background) {
+                    if (tcsetpgrp(STDIN_FILENO, pid) == -1) {
+                        perror("tcsetpgrp failed");
+                        return -1;
+                    }
+
+                    if (waitpid(pid, &status, WUNTRACED) == -1) {
+                        perror("waitpid failed");
+                        return -1;
+                    }
+
+                    if (tcsetpgrp(STDIN_FILENO, getpid()) == -1) {
+                        perror("tcsetpgrp failed");
+                        return -1;
+                    }
+
+                    if (WIFSTOPPED(status)) {
+                        job_list_add(&jobs, pid, strvec_get(&tokens, 0), STOPPED);
+                    }
+                } else {
+                    job_list_add(&jobs, pid, strvec_get(&tokens, 0), BACKGROUND);
                 }
             }
         }
