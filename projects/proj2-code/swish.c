@@ -14,8 +14,6 @@
 #define CMD_LEN 512
 #define PROMPT "@> "
 
-void handle_sigtstp(int sig) {}
-
 int main(int argc, char **argv) {
     // Task 4: Set up shell to ignore SIGTTIN, SIGTTOU when put in background
     // You should adapt this code for use in run_command().
