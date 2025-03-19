@@ -221,6 +221,52 @@ int await_background_job(strvec_t *tokens, job_list_t *jobs) {
     // 3. Use waitpid() to wait for the job to terminate, as you have in resume_job() and main().
     // 4. If the process terminates (is not stopped by a signal) remove it from the jobs list
 
+    //checking enough tokens
+    if (tokens->length < 2) {
+        fprintf(stderr, "tokens length error");
+        return -1;
+    }
+
+    //parsing job index from second token
+    int job_ind;
+    if (sscanf(tokens->data[1], "%d", &job_ind) != 1) {
+        fprintf(stderr, "Invalid job index.");
+        return -1;
+    }
+
+    //retrieving job from job list
+    job_t *job = job_list_get(jobs, job_ind);
+    if (job == NULL) {
+        fprintf(stderr, "Job index out of bounds.");
+        return -1;
+    }
+
+    //ensuring job is a background
+    if (job->status != BACKGROUND) {
+        fprintf(stderr, "Job index is for a stopped process, not a background process\n");
+        return -1;
+    }
+
+    //now waiting for job to terminate or stop
+    int status;
+    if (waitpid(job->pid, &status, WUNTRACED) == -1) {
+        perror("waitpid failed.");
+        return -1;
+    }
+
+    //removing job from job list if it's terminated
+    if (WIFEXITED(status) || WIFSIGNALED(status)) {
+        if (job_list_remove(jobs, job_ind) == -1) {
+            fprintf(stderr, "Failed to remove job from list\n");
+            return -1;
+        }
+    }
+
+    //updating job status to STOPPED if it was stopped.
+    if (WIFSTOPPED(status)) {
+        job->status = STOPPED;
+    }
+
     return 0;
 }
 
