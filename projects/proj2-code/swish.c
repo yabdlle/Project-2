@@ -73,22 +73,26 @@ int main(int argc, char **argv) {
             // If the user supplied an argument (token at index 1), change to that directory
             // Otherwise, change to the home directory by default
             // This is available in the HOME environment variable (use getenv())
+            // If the user supplied an argument (token at index 1), change to that directory
+
             if (tokens.length > 1) {
-                // If an argument is provided, change to the directory specified
                 if (chdir(strvec_get(&tokens, 1)) == -1) {
-                    perror("Error");
+                    perror("chdir");
                 }
             } else {
                 // If no argument is provided, change to the home directory
                 const char *home = getenv("HOME");
-                if (home != NULL) {
-                    if (chdir(home) == -1) {
-                        perror("cd failed");
-                    }
-                } else {
-                    fprintf(stderr, "HOME environment variable not set");
+                if (home == NULL) {
+                    fprintf(stderr, "HOME environment variable not set\n");
+                } else if (chdir(home) == -1) {
+                    perror("chdir");
                 }
             }
+        }
+
+        else if (strcmp(first_token, "exit") == 0) {
+            strvec_clear(&tokens);
+            break;
         }
 
         else if (strcmp(first_token, "exit") == 0) {
@@ -175,60 +179,63 @@ int main(int argc, char **argv) {
             // 3. Add a new entry to the jobs list with the child's pid, program name,
             //    and status BACKGROUND.
 
-            //Task 2
-            //checking if last token is "&" -background job
-            int is_backg = 0;
-            if (tokens.length > 1 && strcmp(strvec_get(&tokens, tokens.length - 1), "&") == 0) {
-                is_backg = 1;
-                strvec_take(&tokens, tokens.length - 1);
+            pid_t pid = fork();
+            if (pid == -1) {
+                perror("fork failed");
+                return 1;
             }
 
-            pid_t child_pid = fork();
-            if (child_pid == -1) {
-                perror("Fork failed.");
-                return -1;
-            }
-
-            //Task 4
-            if (child_pid == 0) {
-                //child process, so run the command
-                if (run_command(&tokens)) {
-                    perror("run_command failed.");
+            // Task 4: Child Process Setup
+            if (pid == 0) {
+                if (setpgid(0, 0) == -1) {
+                    perror("setpgid failed");
                     exit(1);
                 }
-                exit(0);
-            }
-            else {
-                //parent process, so handling job management
-                if (!is_backg) {
-                    //Foreground job is to move the child process to foreground
-                    if (tcsetpgrp(STDIN_FILENO, child_pid) == -1) {
-                        perror("tcsetpgrp");
-                        return -1;
-                    }
 
-                    //wait for the child process to finish or stop
-                    int status;
-                    if (waitpid(child_pid, &status, WUNTRACED) == -1) {
-                        perror("waitpid failed.");
-                        return -1;
-                    }
-
-                    //Restore shell's process group to foreground
-                    if (tcsetpgrp(STDIN_FILENO, getpgrp()) == -1) {
-                        perror("tcsetpgrp failed.");
-                        return -1;
-                    }
-
-                    //if child was stopped, I need to add it to job list
-                    if (WIFSTOPPED(status)) {
-                        job_list_add(&jobs, child_pid, strvec_get(&tokens, 0), STOPPED);
-                    }
+                struct sigaction sa;
+                sa.sa_handler = SIG_DFL;
+                sigemptyset(&sa.sa_mask);
+                sa.sa_flags = 0;
+                if (sigaction(SIGTTOU, &sa, NULL) == -1 || sigaction(SIGTTIN, &sa, NULL) == -1) {
+                    perror("sigaction failed");
+                    exit(1);
                 }
 
-                else {
-                    //Background job is to add it to job list
-                    job_list_add(&jobs, child_pid, strvec_get(&tokens, 0), BACKGROUND);
+                if (run_command(&tokens) == -1) {
+                    exit(1);
+                }
+            } else {
+                int status;
+                int is_background = 0;
+
+                // Task 5: Check if the last token is "&" for background process
+                if (tokens.length > 1 && strcmp(strvec_get(&tokens, tokens.length - 1), "&") == 0) {
+                    is_background = 1;
+                    strvec_take(&tokens, tokens.length - 1);    // Remove the "&"
+                }
+
+                // Task 4: Parent process handles foreground job and waits
+                if (!is_background) {
+                    if (tcsetpgrp(STDIN_FILENO, pid) == -1) {
+                        perror("tcsetpgrp failed");
+                        return -1;
+                    }
+
+                    if (waitpid(pid, &status, WUNTRACED) == -1) {
+                        perror("waitpid failed");
+                        return -1;
+                    }
+
+                    if (tcsetpgrp(STDIN_FILENO, getpid()) == -1) {
+                        perror("tcsetpgrp failed");
+                        return -1;
+                    }
+
+                    if (WIFSTOPPED(status)) {
+                        job_list_add(&jobs, pid, strvec_get(&tokens, 0), STOPPED);
+                    }
+                } else {
+                    job_list_add(&jobs, pid, strvec_get(&tokens, 0), BACKGROUND);
                 }
             }
         }
