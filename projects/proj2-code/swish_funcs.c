@@ -28,19 +28,42 @@ int tokenize(char *s, strvec_t *tokens) {
     if (s == NULL || tokens == NULL) {
         return -1;
     }
-    char *tok = strtok(s, " ");    // Split string s into spaces
+    char *tok = strtok(s, " ");    // split string s into spaces
     while (tok != NULL) {
-        if (strvec_add(tokens, tok) != 0) {    // Add token
+        if (strvec_add(tokens, tok) != 0) {    // add the string
             perror("Failed to add token");
             return -1;
         }
-        tok = strtok(NULL, " ");    // Get the next token
+        tok = strtok(NULL, " ");    // get the next token
     }
 
     return 0;
 }
 
 int run_command(strvec_t *tokens) {
+    // TODO Task 2: Execute the specified program (token 0) with the
+    // specified command-line arguments
+    // THIS FUNCTION SHOULD BE CALLED FROM A CHILD OF THE MAIN SHELL PROCESS
+    // Hint: Build a string array from the 'tokens' vector and pass this into execvp()
+    // Another Hint: You have a guarantee of the longest possible needed array, so you
+    // won't have to use malloc.
+
+    // TODO Task 3: Extend this function to perform output redirection before exec()'ing
+    // Check for '<' (redirect input), '>' (redirect output), '>>' (redirect and append output)
+    // entries inside of 'tokens' (the strvec_find() function will do this for you)
+    // Open the necessary file for reading (<), writing (>), or appending (>>)
+    // Use dup2() to redirect stdin (<), stdout (> or >>)
+    // DO NOT pass redirection operators and file names to exec()'d program
+    // E.g., "ls -l > out.txt" should be exec()'d with strings "ls", "-l", NULL
+
+    // TODO Task 4: You need to do two items of setup before exec()'ing
+    // 1. Restore the signal handlers for SIGTTOU and SIGTTIN to their defaults.
+    // The code in main() within swish.c sets these handlers to the SIG_IGN value.
+    // Adapt this code to use sigaction() to set the handlers to the SIG_DFL value.
+    // 2. Change the process group of this process (a child of the main shell).
+    // Call getpid() to get its process ID then call setpgid() and use this process
+    // ID as the value for the new process group ID
+
     if (tokens == NULL || tokens->length == 0) {
         fprintf(stderr, "run_command: No command provided\n");
         return -1;
@@ -55,6 +78,7 @@ int run_command(strvec_t *tokens) {
 
         if (strcmp(token, "<") == 0) {
             if (i + 1 < tokens->length) {
+                // input redirection
                 in_fd = open(strvec_get(tokens, i + 1), O_RDONLY);
                 if (in_fd == -1) {
                     perror("Failed to open input file");
@@ -67,6 +91,7 @@ int run_command(strvec_t *tokens) {
             }
         } else if (strcmp(token, ">") == 0) {
             if (i + 1 < tokens->length) {
+                // output redirection
                 out_fd = open(strvec_get(tokens, i + 1), O_WRONLY | O_CREAT | O_TRUNC,
                               S_IRUSR | S_IWUSR);
                 if (out_fd == -1) {
@@ -80,6 +105,7 @@ int run_command(strvec_t *tokens) {
             }
         } else if (strcmp(token, ">>") == 0) {
             if (i + 1 < tokens->length) {
+                // append output redirection
                 out_fd = open(strvec_get(tokens, i + 1),
                               O_WRONLY | O_CREAT | O_APPEND | S_IRUSR | S_IWUSR);
                 if (out_fd == -1) {
@@ -96,6 +122,8 @@ int run_command(strvec_t *tokens) {
         }
     }
     argv[argc] = NULL;
+
+    // File redirection error checking
 
     if (in_fd != -1) {
         if (dup2(in_fd, STDIN_FILENO) == -1) {
@@ -117,7 +145,7 @@ int run_command(strvec_t *tokens) {
 
     execvp(argv[0], argv);
     perror("exec");
-    exit(EXIT_FAILURE);
+    return -1;
 }
 
 int resume_job(strvec_t *tokens, job_list_t *jobs, int is_foreground) {
@@ -271,12 +299,21 @@ int await_background_job(strvec_t *tokens, job_list_t *jobs) {
 }
 
 int await_all_background_jobs(job_list_t *jobs) {
-    job_t *current = jobs->head;
+    // TODO Task 6: Wait for all background jobs to stop or terminate
+    // 1. Iterate through the jobs list, ignoring any stopped jobs
+    // 2. For a background job, call waitpid() with WUNTRACED.
+    // 3. If the job has stopped (check with WIFSTOPPED), change its
+    //    status to STOPPED. If the job has terminated, do nothing until the
+    //    next step (don't attempt to remove it while iterating through the list).
+    // 4. Remove all background jobs (which have all just terminated) from jobs list.
+    //    Use the job_list_remove_by_status() function.
 
+    job_t *current = jobs->head;
     while (current != NULL) {
         if (current->status == BACKGROUND) {
             int status;
 
+            // wait for background job
             if (waitpid(current->pid, &status, WUNTRACED) == -1) {
                 perror("waitpid failed.");
                 return -1;
@@ -293,6 +330,7 @@ int await_all_background_jobs(job_list_t *jobs) {
         current = current->next;
     }
 
+    // remove stopped jobs
     job_list_remove_by_status(jobs, STOPPED);
     job_list_remove_by_status(jobs, BACKGROUND);
 

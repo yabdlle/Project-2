@@ -15,8 +15,6 @@
 #define PROMPT "@> "
 
 int main(int argc, char **argv) {
-    // Task 4: Set up shell to ignore SIGTTIN, SIGTTOU when put in background
-    // You should adapt this code for use in run_command().
     struct sigaction sac;
     sac.sa_handler = SIG_IGN;
     if (sigfillset(&sac.sa_mask) == -1) {
@@ -29,6 +27,7 @@ int main(int argc, char **argv) {
         return 1;
     }
 
+    // Initialize token vector and job list
     strvec_t tokens;
     strvec_init(&tokens);
     job_list_t jobs;
@@ -44,12 +43,14 @@ int main(int argc, char **argv) {
         }
         cmd[i] = '\0';
 
+        // Tokenizing the input command
         if (tokenize(cmd, &tokens) != 0) {
             printf("Failed to parse command\n");
             strvec_clear(&tokens);
             job_list_free(&jobs);
             return 1;
         }
+        // If no tokens were found, print prompt again
         if (tokens.length == 0) {
             printf("%s", PROMPT);
             continue;
@@ -57,8 +58,6 @@ int main(int argc, char **argv) {
         const char *first_token = strvec_get(&tokens, 0);
 
         if (strcmp(first_token, "pwd") == 0) {
-            // TODO Task 1: Print the shell's current working directory
-            // Use the getcwd() system callchar cwd[CMD_LEN];
             char cwd[CMD_LEN];
             if (getcwd(cwd, sizeof(cwd)) != NULL) {
                 printf("%s\n", cwd);
@@ -68,13 +67,6 @@ int main(int argc, char **argv) {
         }
 
         else if (strcmp(first_token, "cd") == 0) {
-            // TODO Task 1: Change the shell's current working directory
-            // Use the chdir() system call
-            // If the user supplied an argument (token at index 1), change to that directory
-            // Otherwise, change to the home directory by default
-            // This is available in the HOME environment variable (use getenv())
-            // If the user supplied an argument (token at index 1), change to that directory
-
             if (tokens.length > 1) {
                 if (chdir(strvec_get(&tokens, 1)) == -1) {
                     perror("chdir");
@@ -146,39 +138,7 @@ int main(int argc, char **argv) {
         }
 
         else {
-            // TODO Task 2: If the user input does not match any built-in shell command,
-            // treat the input as a program name and command-line arguments
-            // USE THE run_command() FUNCTION DEFINED IN swish_funcs.c IN YOUR IMPLEMENTATION
-            // You should take the following steps:
-            //   1. Use fork() to spawn a child process
-            //   2. Call run_command() in the child process
-            //   2. In the parent, use waitpid() to wait for the program to exit
-
-            // TODO Task 4: Set the child process as the target of signals sent to the terminal
-            // via the keyboard.
-            // To do this, call 'tcsetpgrp(STDIN_FILENO, <child_pid>)', where child_pid is the
-            // child's process ID just returned by fork(). Do this in the parent process.
-
-            // TODO Task 5: Handle the issue of foreground/background terminal process groups.
-            // Do this by taking the following steps in the shell (parent) process:
-            // 1. Modify your call to waitpid(): Wait specifically for the child just forked, and
-            //    use WUNTRACED as your third argument to detect if it has stopped from a signal
-            // 2. After waitpid() has returned, call tcsetpgrp(STDIN_FILENO, <pid>) where pid is
-            //    the process ID of the shell process (use getpid() to obtain it)
-            // 3. If the child status was stopped by a signal, add it to 'jobs', the
-            //    the terminal's jobs list.
-            // You can detect if this has occurred using WIFSTOPPED on the status
-            // variable set by waitpid()
-
-            // TODO Task 6: If the last token input by the user is "&", start the current
-            // command in the background.
-            // 1. Determine if the last token is "&". If present, use strvec_take() to remove
-            //    the "&" from the token list.
-            // 2. Modify the code for the parent (shell) process: Don't use tcsetpgrp() or
-            //    use waitpid() to interact with the newly spawned child process.
-            // 3. Add a new entry to the jobs list with the child's pid, program name,
-            //    and status BACKGROUND.
-
+            // Forking a child process to run the command
             pid_t pid = fork();
             if (pid == -1) {
                 perror("fork failed");
@@ -187,6 +147,7 @@ int main(int argc, char **argv) {
 
             // Task 4: Child Process Setup
             if (pid == 0) {
+                // Creating a new process group for the child process
                 if (setpgid(0, 0) == -1) {
                     perror("setpgid failed");
                     exit(1);
@@ -204,7 +165,9 @@ int main(int argc, char **argv) {
                 if (run_command(&tokens) == -1) {
                     exit(1);
                 }
-            } else {
+            }
+            // parent process block
+            else {
                 int status;
                 int is_background = 0;
 
@@ -240,10 +203,12 @@ int main(int argc, char **argv) {
             }
         }
 
+        // clear token vector for next command
         strvec_clear(&tokens);
         printf("%s", PROMPT);
     }
 
+    // freeing job list memory before exiting
     job_list_free(&jobs);
     return 0;
 }
